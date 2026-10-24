@@ -1,0 +1,10 @@
+.venv/
+__pycache__/
+.pytest_cache/
+library.db
+out/*.wav
+.ijfw/
+ijfw/
+.env
+*.env
+out/_test/

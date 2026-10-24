@@ -1,0 +1,150 @@
+{
+  "bpm": 94,
+  "key": "C minor",
+  "bars": 4,
+  "swing": 0.35,
+  "sections": [
+    {
+      "name": "groove",
+      "start_bar": 0,
+      "bars": 2
+    },
+    {
+      "name": "groove+break",
+      "start_bar": 2,
+      "bars": 2
+    }
+  ],
+  "tracks": [
+    {
+      "name": "kick",
+      "type": "pattern",
+      "sample": "uzu-drumkit/bd/11_bd_mot4i.wav",
+      "steps": [
+        1,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0.6,
+        0,
+        0,
+        1,
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      "gain_db": 0,
+      "pan": 0.0
+    },
+    {
+      "name": "snare",
+      "type": "pattern",
+      "sample": "uzu-drumkit/sd/11_sd_switchangel_3.wav",
+      "steps": [
+        0,
+        0,
+        0,
+        0,
+        1,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        1,
+        0,
+        0,
+        0.35
+      ],
+      "gain_db": -2,
+      "pan": 0.0
+    },
+    {
+      "name": "hats",
+      "type": "pattern",
+      "sample": "uzu-drumkit/hh/11_hh_mot4i.wav",
+      "steps": [
+        0.8,
+        0.4,
+        0.6,
+        0.4,
+        0.8,
+        0.4,
+        0.6,
+        0.4,
+        0.8,
+        0.4,
+        0.6,
+        0.4,
+        0.8,
+        0.4,
+        0.6,
+        0.4
+      ],
+      "gain_db": -9,
+      "pan": 0.25
+    },
+    {
+      "name": "bass",
+      "type": "pattern",
+      "sample": "karoryfer.meatbass/Samples/pizz/c2_vl4_rr1.wav",
+      "steps": [
+        1,
+        0,
+        0,
+        0.7,
+        0,
+        0,
+        0.8,
+        0,
+        0,
+        0,
+        1,
+        0,
+        0,
+        0.7,
+        0,
+        0
+      ],
+      "gain_db": -1,
+      "pan": -0.1,
+      "pitches": [
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        3,
+        0,
+        0,
+        0,
+        7,
+        0,
+        0,
+        10,
+        0,
+        0
+      ]
+    },
+    {
+      "name": "break",
+      "type": "loop",
+      "sample": "uzu-drumkit/brk/10_break_amen_pprocessed.wav",
+      "loop_bars": 1,
+      "start_bars": [
+        2,
+        3
+      ],
+      "gain_db": -10,
+      "pan": 0.0
+    }
+  ]
+}
