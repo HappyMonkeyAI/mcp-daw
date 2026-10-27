@@ -18,7 +18,9 @@ sys.path.insert(0, str(ROOT))
 
 from mcp.server.fastmcp import FastMCP  # noqa: E402
 
-from mcp_daw import library, render as renderer, song as songlib  # noqa: E402
+from mcp_daw import comfy, dynamics, library, master as mastering, render as renderer, song as songlib  # noqa: E402
+
+comfy.load_env(ROOT)
 
 SAMPLES, SONGS, OUT, DB = ROOT / "samples", ROOT / "songs", ROOT / "out", ROOT / "library.db"
 mcp = FastMCP("mcp_daw")
@@ -141,6 +143,98 @@ def render(song: str, mp3: bool = True) -> dict:
         subprocess.run(["ffmpeg", "-y", "-loglevel", "error", "-i", str(wav), "-b:a", "192k", str(out)], check=True, stdin=subprocess.DEVNULL, capture_output=True)
         result["mp3"] = rel(out)
     return result
+
+
+def _audio_path(path: str, must_exist: bool = True) -> Path:
+    p = (ROOT / path.replace("\\", "/")).resolve()
+    if ROOT not in p.parents:
+        raise ValueError("audio paths must be relative to the project root")
+    if must_exist and not p.is_file():
+        raise ValueError(f"file not found: {path}")
+    return p
+
+
+def _write_audio(y, sr, out: Path, mp3: bool) -> dict:
+    import soundfile as sf
+    out.parent.mkdir(parents=True, exist_ok=True)
+    sf.write(out, y, sr, subtype="PCM_24")
+    res = {"wav": rel(out)}
+    if mp3 and shutil.which("ffmpeg"):
+        m = out.with_suffix(".mp3")
+        subprocess.run(["ffmpeg", "-y", "-loglevel", "error", "-i", str(out), "-b:a", "256k", str(m)],
+                       check=True, stdin=subprocess.DEVNULL, capture_output=True)
+        res["mp3"] = rel(m)
+    return res
+
+
+@mcp.tool()
+def master_audio(path: str, preset: str = "edm", mp3: bool = True) -> dict:
+    """Master a WAV/MP3 under the project root: LUFS-normalise then 4x-oversampled true-peak limit.
+    presets: streaming, balanced, warm, pop, punch, rock, hiphop, edm (-10.5 LUFS / -1 dBTP).
+    Writes <name>_master.wav (+ .mp3)."""
+    import librosa
+    src = _audio_path(path)
+    y, sr = librosa.load(str(src), sr=None, mono=False)
+    y = y.T if y.ndim == 2 else y
+    out, rep = mastering.master(y, sr, preset)
+    return {**rep, **_write_audio(out, sr, src.with_name(src.stem + "_master.wav"), mp3)}
+
+
+@mcp.tool()
+def apply_arrangement_dynamics(song: str, path: str, preset: str = "subtle", master_preset: str | None = "edm",
+                               mp3: bool = True) -> dict:
+    """Use songs/<song>.json's bpm + sections to add a beat-grid sidechain pump, section contrast and a
+    pre-drop low-cut sweep to an audio file (e.g. a render or an AI re-take), then optionally master it.
+    preset: 'subtle' or 'strong'. Section roles come from names: drop/chorus, build, intro/break/outro."""
+    import librosa
+    s = _load(song)
+    src = _audio_path(path)
+    y, sr = librosa.load(str(src), sr=None, mono=False)
+    y = y.T if y.ndim == 2 else y
+    out, rep = dynamics.apply_dynamics(y, sr, float(s["bpm"]), s.get("sections", []), preset)
+    if master_preset:
+        out, mrep = mastering.master(out, sr, master_preset)
+        rep["master"] = mrep
+    return {**rep, **_write_audio(out, sr, src.with_name(f"{src.stem}_{preset}.wav"), mp3)}
+
+
+@mcp.tool()
+def comfy_m2m(path: str, tags: str, lyrics: str = "[instrumental]", denoise: float = 0.5,
+              lyrics_strength: float = 1.0, seed: int = 0) -> dict:
+    """ACE-Step v1 music-to-music polish of an audio file via ComfyUI (COMFYUI_URL).
+    Low denoise (0.3-0.5) keeps the arrangement; 0.7 restyles it. Output: out/<name>_m2m.mp3."""
+    src = _audio_path(path)
+    c = comfy.ComfyClient()
+    wf = comfy.m2m_v1_workflow(c.upload(src), tags, lyrics, lyrics_strength, denoise, seed)
+    res = c.run(wf, OUT / f"{src.stem}_m2m.mp3")
+    res["out"] = rel(Path(res["out"]))
+    return res
+
+
+@mcp.tool()
+def comfy_vocal_pass(song: str, path: str, lyrics: str, tags: str, denoise: float = 0.62, seed: int = 0,
+                     language: str = "en") -> dict:
+    """ACE-Step 1.5 turbo vocal pass over an (instrumental) audio file via ComfyUI, conditioned on the
+    song's bpm/key and the file's duration. Use [verse]/[chorus]/[instrumental] tags in lyrics.
+    Do not name real artists in tags. Output: out/<name>_vocal.mp3."""
+    import librosa
+    s = _load(song)
+    src = _audio_path(path)
+    dur = round(float(librosa.get_duration(path=str(src))), 2)
+    c = comfy.ComfyClient()
+    wf = comfy.vocal_v15_workflow(c.upload(src), tags, lyrics, int(round(s["bpm"])), s.get("key", "C minor"),
+                                  dur, denoise, seed, language)
+    res = c.run(wf, OUT / f"{src.stem}_vocal.mp3")
+    res["out"] = rel(Path(res["out"]))
+    return res
+
+
+@mcp.tool()
+def check_lyrics(path: str, lyrics: str, start: float = 0.0, duration: float | None = None) -> dict:
+    """Optional: transcribe sung audio with faster-whisper and score word overlap with the lyrics
+    (precision / recall). Needs: pip install -r requirements-asr.txt"""
+    from mcp_daw import asr
+    return asr.intelligibility(str(_audio_path(path)), lyrics, start, duration)
 
 
 @mcp.tool()

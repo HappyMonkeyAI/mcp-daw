@@ -16,6 +16,15 @@ SUSTAINED = {"crash", "ride", "hat", "open_hat", "bass", "tom"}  # ring out; nev
 
 # token -> category; first match wins, so specific names come first
 CATEGORY_RULES = [
+    # melodic / fx words first so e.g. "lead_loop" is a lead, not a drum break
+    (r"riser|uplift|downlift|impact|sweep|whoosh|reverse crash", "riser"),
+    (r"\bfx\b|sfx|\bnoise\b", "fx"),
+    (r"vocal|\bvox\b|\bvoc\b|acapella|chant|\bshout\b", "vocal"),
+    (r"\barp\b|arpeg", "arp"),
+    (r"pluck", "pluck"),
+    (r"chord|\bstab\b|stabs", "chord"),
+    (r"\bpad\b|pads|atmos|ambient|drone|strings?\b", "pad"),
+    (r"\blead\b|leads|melody|\bhook\b|supersaw", "lead"),
     (r"brk|break|amen|loop", "break"),
     (r"kick|\bbd\b|bassdrum", "kick"),
     (r"snare|\bsd\b|\bsn\b", "snare"),
@@ -32,7 +41,8 @@ CATEGORY_RULES = [
 NOTE_RE = re.compile(r"(?:^|_)([a-g](?:b|#)?)(\d)(?:_|$)")
 SCHEMA = """CREATE TABLE IF NOT EXISTS samples(
   path TEXT PRIMARY KEY, name TEXT, source TEXT, licence TEXT,
-  duration REAL, kind TEXT, category TEXT, bpm REAL, key TEXT, note TEXT, peak REAL)"""
+  duration REAL, kind TEXT, category TEXT, bpm REAL, key TEXT, note TEXT, peak REAL, stem INTEGER DEFAULT 0)"""
+STEM_SECONDS = 60  # longer files are stems / full bounces, not loops
 
 
 def detect_licence(root: Path) -> str:
@@ -63,7 +73,18 @@ def categorise(rel: Path, y: np.ndarray, sr: int) -> str:
     for pat, cat in CATEGORY_RULES:
         if re.search(pat, text):
             return cat
-    # fallback on spectral centroid
+    # fallback: noise-like -> fx, rising envelope -> riser, smooth sustained -> pad, else by brightness
+    dur = len(y) / sr
+    if dur >= 1.5:
+        rms = librosa.feature.rms(y=y)[0]
+        q = max(1, len(rms) // 4)
+        flat = float(np.mean(librosa.feature.spectral_flatness(y=y)))
+        if rms[-q:].mean() > 3 * rms[:q].mean() + 1e-6 and flat > 0.05:
+            return "riser"
+        if flat > 0.3:
+            return "fx"
+        if dur >= 3 and n_onsets(y, sr) / dur < 0.5:
+            return "pad"
     c = float(np.mean(librosa.feature.spectral_centroid(y=y, sr=sr)))
     return "low" if c < 800 else "high" if c > 4000 else "mid"
 
@@ -97,13 +118,15 @@ def analyse(path: Path, rel: Path) -> dict:
     m = NOTE_RE.search(path.stem.lower())
     note = (m.group(1).upper() + m.group(2)) if m and cat == "bass" else None
     return dict(duration=round(dur, 4), kind=kind, category=cat, bpm=bpm, key=key,
-                note=note, peak=float(np.abs(y).max()))
+                note=note, peak=float(np.abs(y).max()), stem=int(dur > STEM_SECONDS))
 
 
 def connect(db: str | Path) -> sqlite3.Connection:
     con = sqlite3.connect(db)
     con.row_factory = sqlite3.Row
     con.execute(SCHEMA)
+    if "stem" not in {r[1] for r in con.execute("PRAGMA table_info(samples)")}:
+        con.execute("ALTER TABLE samples ADD COLUMN stem INTEGER DEFAULT 0")  # older DBs
     return con
 
 
@@ -119,9 +142,10 @@ def scan(sample_root: str | Path, db: str | Path) -> int:
                 continue
             rel = f.relative_to(root)
             info = analyse(f, rel)
-            con.execute("INSERT OR REPLACE INTO samples VALUES(?,?,?,?,?,?,?,?,?,?,?)",
+            con.execute("INSERT OR REPLACE INTO samples(path,name,source,licence,duration,kind,category,bpm,key,note,peak,stem)"
+                        " VALUES(?,?,?,?,?,?,?,?,?,?,?,?)",
                         (rel.as_posix(), f.stem, src.name, lic, info["duration"], info["kind"],
-                         info["category"], info["bpm"], info["key"], info["note"], info["peak"]))
+                         info["category"], info["bpm"], info["key"], info["note"], info["peak"], info["stem"]))
             n += 1
     con.commit()
     con.close()
