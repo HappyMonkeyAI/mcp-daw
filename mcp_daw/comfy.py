@@ -92,6 +92,13 @@ def vocal_v15_workflow(audio_name: str, tags: str, lyrics: str, bpm: int, keysca
     return g
 
 
+def safe_upload_name(name: str) -> str:
+    """Keep upload filenames to a conservative charset (no CR/LF/quotes/path separators in the multipart header)."""
+    import re
+    clean = re.sub(r"[^A-Za-z0-9._-]", "_", Path(name).name).lstrip(".")
+    return clean or f"mcp_daw_{uuid.uuid4().hex[:8]}"
+
+
 class ComfyClient:
     def __init__(self, url: str | None = None, timeout: float = 1800):
         self.url = (url or comfy_url()).rstrip("/")
@@ -105,6 +112,7 @@ class ComfyClient:
     def upload(self, path: str | Path, name: str | None = None) -> str:
         path = Path(path)
         name = name or f"mcp_daw_{uuid.uuid4().hex[:8]}{path.suffix}"
+        name = safe_upload_name(name)
         b = "----mcpdaw" + uuid.uuid4().hex
         body = (f"--{b}\r\nContent-Disposition: form-data; name=\"image\"; filename=\"{name}\"\r\n"
                 "Content-Type: application/octet-stream\r\n\r\n").encode() + path.read_bytes() + \

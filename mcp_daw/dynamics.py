@@ -87,11 +87,14 @@ def section_gain_curve(y, sr, bpm, sections, contrast_db, phase=0.0, ramp_ms=25.
     """Per-sample gain (linear). Drops stay at 0 dB; quiet sections are cut to (loudest drop - contrast);
     builds ramp from the previous level up to -1 dB at the bar line."""
     rms = section_rms(y, sr, bpm, sections, phase)
+    if not rms:  # no sections, or none overlap the audio
+        return np.ones(len(y))
     drops = [rms[s["name"]] for s in sections if role(s["name"]) == "drop" and s["name"] in rms]
     ref = max(drops) if drops else max(rms.values())
     bs, n = bar_seconds(bpm), len(y)
     g = np.zeros(n)
     prev = 0.0
+    first_bar = min(s["start_bar"] for s in sections)
     for s in sorted(sections, key=lambda s: s["start_bar"]):
         a = max(0, int((phase + s["start_bar"] * bs) * sr))
         b = min(n, int((phase + (s["start_bar"] + s["bars"]) * bs) * sr))
@@ -105,8 +108,8 @@ def section_gain_curve(y, sr, bpm, sections, contrast_db, phase=0.0, ramp_ms=25.
         else:
             val = 0.0
             g[a:b] = 0.0
-        if s["start_bar"] == min(x["start_bar"] for x in sections):
-            g[:a] = val
+        if s["start_bar"] == first_bar:
+            g[:a] = val  # pre-roll before the first section (beat phase offset) follows that section's level
         prev = val
     return 10 ** (_smooth(g, int(sr * ramp_ms / 1000)) / 20)
 
@@ -137,6 +140,8 @@ def pump_envelopes(n, sr, bpm, sections, duck_low_db, duck_high_db, release_ms, 
 
 def apply_dynamics(y: np.ndarray, sr: int, bpm: float, sections: list[dict],
                    preset: str | DynamicsPreset = "subtle", phase: float | None = None) -> tuple[np.ndarray, dict]:
+    if isinstance(preset, str) and preset not in DYNAMICS_PRESETS:
+        raise ValueError(f"unknown dynamics preset {preset!r}; valid: {sorted(DYNAMICS_PRESETS)}")
     p = DYNAMICS_PRESETS[preset] if isinstance(preset, str) else preset
     y = np.asarray(y, dtype=np.float64)
     if y.ndim == 1:

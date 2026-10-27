@@ -142,3 +142,25 @@ def test_library_new_categories_and_stem_flag(tmp_path):
     assert cats == {"Lead_Loop": "lead", "big_pad": "pad", "vocal_chop": "vocal", "riser_up": "riser",
                     "pluck_c": "pluck", "chord_stab": "chord"}
     assert all(r["stem"] == 0 for r in library.search(db, limit=50))
+
+
+def test_unknown_presets_raise_clear_errors():
+    with pytest.raises(ValueError, match="valid"):
+        master.master(synth(bars=1), SR, "club")
+    with pytest.raises(ValueError, match="valid"):
+        dynamics.apply_dynamics(synth(bars=1), SR, 128, SECTIONS, "huge", phase=0.0)
+
+
+def test_dynamics_without_overlapping_sections_is_passthrough_gain():
+    y = synth(bars=2)
+    assert np.allclose(dynamics.section_gain_curve(y, SR, 128, [], 8.0), 1.0)
+    late = [{"name": "drop", "start_bar": 50, "bars": 4}]
+    assert np.allclose(dynamics.section_gain_curve(y, SR, 128, late, 8.0), 1.0)
+    out, _ = dynamics.apply_dynamics(y, SR, 128, [], "subtle", phase=0.0)
+    assert out.shape == y.shape
+
+
+def test_upload_name_is_sanitised():
+    n = comfy.safe_upload_name('evil\r\nX-Injected: 1".wav')
+    assert "\r" not in n and "\n" not in n and '"' not in n and n.endswith(".wav")
+    assert comfy.safe_upload_name("../../etc/passwd") == "passwd"

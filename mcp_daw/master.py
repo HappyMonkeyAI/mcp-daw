@@ -93,6 +93,8 @@ def master(y: np.ndarray, sr: int, preset: str | Preset = "edm", engine: str = "
 
     Returns (audio, report). ``engine``: 'ffmpeg', 'numpy' or 'auto'.
     """
+    if isinstance(preset, str) and preset not in PRESETS:
+        raise ValueError(f"unknown mastering preset {preset!r}; valid: {sorted(PRESETS)}")
     p = PRESETS[preset] if isinstance(preset, str) else preset
     y = _stereo(y)
     if engine == "auto":

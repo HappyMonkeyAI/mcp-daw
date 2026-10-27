@@ -76,3 +76,11 @@ def test_stdio_smoke(tmp_path):
             assert (root / data["wav"]).exists()
             assert "smoke" in (await call("list_songs")).content[0].text
     asyncio.run(run())
+
+
+def test_audio_path_rejects_outside_and_sibling_prefix(srv, tmp_path):
+    sibling = srv.ROOT.parent / (srv.ROOT.name + "_evil")
+    for bad in ("../x.wav", str(sibling / "x.wav"), "/etc/passwd"):
+        with pytest.raises(ValueError):
+            srv._audio_path(bad, must_exist=False)
+    assert srv._audio_path("songs/x.wav", must_exist=False) == (srv.ROOT / "songs" / "x.wav").resolve()
