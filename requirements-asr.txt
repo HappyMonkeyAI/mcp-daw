@@ -1,0 +1,2 @@
+# optional: lyric intelligibility check (check_lyrics tool)
+faster-whisper>=1.0
